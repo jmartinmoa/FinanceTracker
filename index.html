@@ -37,6 +37,10 @@
                     <i class="fas fa-tags"></i>
                     <span>Categories</span>
                 </li>
+                <li class="nav-item" data-page="debts">
+                    <i class="fas fa-file-invoice-dollar"></i>
+                    <span>Debts</span>
+                </li>
                 <li class="nav-item" data-page="settings">
                     <i class="fas fa-cog"></i>
                     <span>Settings</span>
@@ -122,6 +126,20 @@
                         </div>
                     </div>
 
+                    <!-- Cards Overview -->
+                    <div class="cards-overview">
+                        <h3>My Cards</h3>
+                        <div id="cardsOverviewList" class="cards-overview-list">
+                            <!-- Cards will be populated here -->
+                        </div>
+                    </div>
+
+                    <!-- Debts Chart -->
+                    <div class="chart-card">
+                        <h3>Debts Progress</h3>
+                        <canvas id="debtsChart"></canvas>
+                    </div>
+
                     <!-- Recent Transactions -->
                     <div class="recent-transactions">
                         <h3>Recent Transactions</h3>
@@ -151,26 +169,16 @@
                         <select id="categoryFilter">
                             <option value="all">All Categories</option>
                         </select>
-                        <input type="month" id="monthFilter" placeholder="Select Month">
+                        <select id="transactionMonthFilter">
+                            <option value="all">All Months</option>
+                        </select>
+                        <select id="transactionYearFilter">
+                            <option value="all">All Years</option>
+                        </select>
                     </div>
 
-                    <div class="transactions-table">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Date</th>
-                                    <th>Type</th>
-                                    <th>Category</th>
-                                    <th>Description</th>
-                                    <th>Amount</th>
-                                    <th>Credit Card</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody id="transactionsTableBody">
-                                <!-- Transactions will be populated here -->
-                            </tbody>
-                        </table>
+                    <div id="transactionsByWeek">
+                        <!-- Transactions grouped by week will be populated here -->
                     </div>
                 </div>
             </div>
@@ -262,6 +270,51 @@
                                 <!-- Investment types will be populated here -->
                             </div>
                         </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Debts Page -->
+            <div id="debts" class="page">
+                <header class="page-header">
+                    <h1>Debts</h1>
+                    <button id="addDebtBtn" class="btn-primary">
+                        <i class="fas fa-plus"></i> Add Debt
+                    </button>
+                </header>
+
+                <div class="debts-content">
+                    <div class="filters">
+                        <select id="debtMonthFilter">
+                            <option value="all">All Months</option>
+                        </select>
+                        <select id="debtYearFilter">
+                            <option value="all">All Years</option>
+                        </select>
+                        <select id="debtStatusFilter">
+                            <option value="all">All Status</option>
+                            <option value="pending">Pending</option>
+                            <option value="complete">Complete</option>
+                        </select>
+                    </div>
+
+                    <div class="debts-table">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Debt Name</th>
+                                    <th>Total Amount</th>
+                                    <th>Progress</th>
+                                    <th>Card</th>
+                                    <th>Start Date</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="debtsTableBody">
+                                <!-- Debts will be populated here -->
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </div>
@@ -487,6 +540,50 @@
             </form>
         </div>
     </div>
+
+    <!-- Debt Modal -->
+    <div id="debtModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="debtModalTitle">Add Debt</h2>
+                <span class="close">&times;</span>
+            </div>
+            <form id="debtForm">
+                <div class="form-group">
+                    <label for="debtName">Debt Name</label>
+                    <input type="text" id="debtName" required>
+                </div>
+                <div class="form-group">
+                    <label for="debtAmount">Total Amount</label>
+                    <input type="number" id="debtAmount" step="0.01" required>
+                </div>
+                <div class="form-group">
+                    <label for="debtInstallments">Number of Installments</label>
+                    <input type="number" id="debtInstallments" min="1" required>
+                </div>
+                <div class="form-group">
+                    <label for="debtCard">Card</label>
+                    <select id="debtCard" required>
+                        <option value="">Select Card</option>
+                        <!-- Cards will be populated here -->
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="debtStartDate">Start Date</label>
+                    <input type="date" id="debtStartDate" required>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn-secondary" id="cancelDebt">Cancel</button>
+                    <button type="submit" class="btn-primary">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Mobile Menu Toggle -->
+    <button id="mobileMenuToggle" class="mobile-menu-toggle">
+        <i class="fas fa-bars"></i>
+    </button>
 
     <script src="script.js"></script>
 </body>

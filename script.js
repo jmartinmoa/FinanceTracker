@@ -10,6 +10,7 @@ class FinanceTracker {
             transactions: [],
             investments: [],
             cards: [],
+            debts: [],
             categories: {
                 income: [
                     { id: 'salary', name: 'Salary', color: '#22c55e' },
@@ -104,6 +105,10 @@ class FinanceTracker {
             this.openCategoryModal();
         });
 
+        document.getElementById('addDebtBtn').addEventListener('click', () => {
+            this.openDebtModal();
+        });
+
         // Modal close events
         document.querySelectorAll('.close').forEach(closeBtn => {
             closeBtn.addEventListener('click', (e) => {
@@ -132,6 +137,11 @@ class FinanceTracker {
             this.saveCategory();
         });
 
+        document.getElementById('debtForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            this.saveDebt();
+        });
+
         // Cancel buttons
         document.getElementById('cancelTransaction').addEventListener('click', () => {
             this.closeModal(document.getElementById('transactionModal'));
@@ -147,6 +157,10 @@ class FinanceTracker {
 
         document.getElementById('cancelCategory').addEventListener('click', () => {
             this.closeModal(document.getElementById('categoryModal'));
+        });
+
+        document.getElementById('cancelDebt').addEventListener('click', () => {
+            this.closeModal(document.getElementById('debtModal'));
         });
 
         // Settings page events
@@ -175,8 +189,53 @@ class FinanceTracker {
             this.renderTransactions();
         });
 
-        document.getElementById('monthFilter').addEventListener('change', () => {
+        document.getElementById('transactionMonthFilter').addEventListener('change', () => {
             this.renderTransactions();
+        });
+
+        document.getElementById('transactionYearFilter').addEventListener('change', () => {
+            this.renderTransactions();
+        });
+
+        // Debt filters
+        document.getElementById('debtMonthFilter').addEventListener('change', () => {
+            this.renderDebts();
+        });
+
+        document.getElementById('debtYearFilter').addEventListener('change', () => {
+            this.renderDebts();
+        });
+
+        document.getElementById('debtStatusFilter').addEventListener('change', () => {
+            this.renderDebts();
+        });
+
+        // Mobile menu toggle
+        const mobileMenuToggle = document.getElementById('mobileMenuToggle');
+        if (mobileMenuToggle) {
+            mobileMenuToggle.addEventListener('click', () => {
+                document.querySelector('.sidebar').classList.toggle('open');
+            });
+        }
+
+        // Close sidebar when clicking outside on mobile
+        document.addEventListener('click', (e) => {
+            const sidebar = document.querySelector('.sidebar');
+            const mobileMenuToggle = document.getElementById('mobileMenuToggle');
+            if (window.innerWidth <= 768 && sidebar && sidebar.classList.contains('open')) {
+                if (!sidebar.contains(e.target) && e.target !== mobileMenuToggle && !mobileMenuToggle.contains(e.target)) {
+                    sidebar.classList.remove('open');
+                }
+            }
+        });
+
+        // Close sidebar when navigating on mobile
+        document.querySelectorAll('.nav-item').forEach(item => {
+            item.addEventListener('click', () => {
+                if (window.innerWidth <= 768) {
+                    document.querySelector('.sidebar').classList.remove('open');
+                }
+            });
         });
 
         // Close modal on outside click
@@ -247,6 +306,9 @@ class FinanceTracker {
             case 'categories':
                 this.renderCategories();
                 break;
+            case 'debts':
+                this.renderDebts();
+                break;
             case 'settings':
                 // Settings page doesn't need special rendering
                 break;
@@ -258,6 +320,8 @@ class FinanceTracker {
         const monthData = this.getMonthData(this.currentMonth);
         this.updateSummaryCards(monthData);
         this.renderCharts(monthData);
+        this.renderCardsOverview();
+        this.renderDebtsChart();
         this.renderRecentTransactions();
     }
 
@@ -580,6 +644,143 @@ class FinanceTracker {
         });
     }
 
+    renderCardsOverview() {
+        const container = document.getElementById('cardsOverviewList');
+        
+        if (this.data.cards.length === 0) {
+            container.innerHTML = '<div class="empty-state"><i class="fas fa-credit-card"></i><h3>No cards added</h3><p>Add your first card to track payments</p></div>';
+            return;
+        }
+
+        const now = new Date();
+        const currentYear = now.getFullYear();
+        const currentMonth = now.getMonth();
+
+        const cardsHtml = this.data.cards.map(card => {
+            if (!card.dueDate) {
+                // Show card even without due date, but without days until due
+                const currentBalance = this.getCardBalance(card.id);
+                const utilization = card.type === 'credit' && card.limit ? (currentBalance / card.limit) * 100 : 0;
+                
+                return `
+                    <div class="card-overview-item" style="border-left: 4px solid ${card.color}">
+                        <div class="card-overview-header">
+                            <h4>${card.name}</h4>
+                            <span class="card-type-badge-small">${card.type === 'credit' ? 'Credit' : 'Debit'}</span>
+                        </div>
+                        <div class="card-overview-info">
+                            <p><strong>Balance:</strong> ${this.formatCurrency(card.type === 'credit' ? currentBalance : (card.balance || 0))}</p>
+                            ${card.type === 'credit' ? `<p><strong>Utilization:</strong> ${utilization.toFixed(1)}%</p>` : ''}
+                        </div>
+                    </div>
+                `;
+            }
+            
+            let daysUntilDue = 0;
+            const dueDay = parseInt(card.dueDate);
+            
+            // Calculate next due date
+            let nextDueDate = new Date(currentYear, currentMonth, dueDay);
+            if (nextDueDate < now) {
+                nextDueDate = new Date(currentYear, currentMonth + 1, dueDay);
+            }
+            
+            daysUntilDue = Math.ceil((nextDueDate - now) / (1000 * 60 * 60 * 24));
+            
+            const currentBalance = this.getCardBalance(card.id);
+            const utilization = card.type === 'credit' && card.limit ? (currentBalance / card.limit) * 100 : 0;
+            
+            return `
+                <div class="card-overview-item" style="border-left: 4px solid ${card.color}">
+                    <div class="card-overview-header">
+                        <h4>${card.name}</h4>
+                        <span class="card-type-badge-small">${card.type === 'credit' ? 'Credit' : 'Debit'}</span>
+                    </div>
+                    <div class="card-overview-info">
+                        <p><strong>Balance:</strong> ${this.formatCurrency(card.type === 'credit' ? currentBalance : (card.balance || 0))}</p>
+                        ${card.type === 'credit' ? `<p><strong>Utilization:</strong> ${utilization.toFixed(1)}%</p>` : ''}
+                        <p><strong>Days until due:</strong> <span class="${daysUntilDue <= 7 ? 'text-danger' : daysUntilDue <= 14 ? 'text-warning' : 'text-success'}">${daysUntilDue} days</span></p>
+                    </div>
+                </div>
+            `;
+        }).join('');
+        
+        container.innerHTML = cardsHtml;
+    }
+
+    renderDebtsChart() {
+        const ctx = document.getElementById('debtsChart').getContext('2d');
+        
+        if (this.data.debts.length === 0) {
+            ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+            ctx.fillStyle = '#94a3b8';
+            ctx.font = '16px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('No debts yet', ctx.canvas.width / 2, ctx.canvas.height / 2);
+            return;
+        }
+
+        const debts = this.data.debts.map(debt => {
+            const progress = this.calculateDebtProgress(debt);
+            return {
+                name: debt.name,
+                total: debt.amount,
+                paid: (progress.currentInstallments / debt.installments) * debt.amount,
+                remaining: debt.amount - ((progress.currentInstallments / debt.installments) * debt.amount)
+            };
+        });
+
+        if (this.debtsChart) {
+            this.debtsChart.destroy();
+        }
+
+        this.debtsChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: debts.map(d => d.name),
+                datasets: [{
+                    label: 'Paid',
+                    data: debts.map(d => d.paid),
+                    backgroundColor: '#22c55e'
+                }, {
+                    label: 'Remaining',
+                    data: debts.map(d => d.remaining),
+                    backgroundColor: '#ef4444'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'top'
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return context.dataset.label + ': ' + '$' + context.parsed.y.toLocaleString();
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        stacked: true
+                    },
+                    y: {
+                        stacked: true,
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function(value) {
+                                return '$' + value.toLocaleString();
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
     renderRecentTransactions() {
         const recentTransactions = this.data.transactions
             .sort((a, b) => new Date(b.date) - new Date(a.date))
@@ -608,14 +809,15 @@ class FinanceTracker {
     // Transactions
     renderTransactions() {
         this.populateCategoryFilter();
-        this.populateCardOptions();
+        this.populateMonthYearFilters();
         
         let filteredTransactions = [...this.data.transactions];
         
         // Apply filters
         const typeFilter = document.getElementById('transactionTypeFilter').value;
         const categoryFilter = document.getElementById('categoryFilter').value;
-        const monthFilter = document.getElementById('monthFilter').value;
+        const monthFilter = document.getElementById('transactionMonthFilter').value;
+        const yearFilter = document.getElementById('transactionYearFilter').value;
         
         if (typeFilter !== 'all') {
             filteredTransactions = filteredTransactions.filter(t => t.type === typeFilter);
@@ -625,49 +827,111 @@ class FinanceTracker {
             filteredTransactions = filteredTransactions.filter(t => t.category === categoryFilter);
         }
         
-        if (monthFilter) {
-            const filterDate = new Date(monthFilter);
+        if (monthFilter !== 'all') {
+            const monthIndex = parseInt(monthFilter);
             filteredTransactions = filteredTransactions.filter(t => {
                 const transactionDate = new Date(t.date);
-                return transactionDate.getFullYear() === filterDate.getFullYear() && 
-                       transactionDate.getMonth() === filterDate.getMonth();
+                return transactionDate.getMonth() === monthIndex;
+            });
+        }
+        
+        if (yearFilter !== 'all') {
+            const year = parseInt(yearFilter);
+            filteredTransactions = filteredTransactions.filter(t => {
+                const transactionDate = new Date(t.date);
+                return transactionDate.getFullYear() === year;
             });
         }
         
         // Sort by date (newest first)
         filteredTransactions.sort((a, b) => new Date(b.date) - new Date(a.date));
         
-        this.renderTransactionsTable(filteredTransactions);
+        this.renderTransactionsByWeek(filteredTransactions);
     }
 
-    renderTransactionsTable(transactions) {
-        const tbody = document.getElementById('transactionsTableBody');
+    renderTransactionsByWeek(transactions) {
+        const container = document.getElementById('transactionsByWeek');
         
         if (transactions.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="7" class="text-center">No transactions found</td></tr>';
+            container.innerHTML = '<div class="empty-state"><i class="fas fa-receipt"></i><h3>No transactions found</h3><p>Try adjusting your filters</p></div>';
             return;
         }
         
-        tbody.innerHTML = transactions.map(t => `
-            <tr>
-                <td>${new Date(t.date).toLocaleDateString()}</td>
-                <td><span class="badge ${t.type}">${t.type.charAt(0).toUpperCase() + t.type.slice(1)}</span></td>
-                <td>${this.getCategoryName(t.category, t.type)}</td>
-                <td>${t.description}</td>
-                <td class="${t.type === 'income' ? 'text-success' : 'text-danger'}">
-                    ${t.type === 'income' ? '+' : '-'}${this.formatCurrency(t.amount)}
-                </td>
-                <td>${t.card ? this.getCardName(t.card) : '-'}</td>
-                <td>
-                    <button class="btn-edit" onclick="financeTracker.editTransaction('${t.id}')">
-                        <i class="fas fa-edit"></i>
-                    </button>
-                    <button class="btn-danger" onclick="financeTracker.deleteTransaction('${t.id}')">
-                        <i class="fas fa-trash"></i>
-                    </button>
-                </td>
-            </tr>
-        `).join('');
+        // Group transactions by week
+        const weeks = {};
+        
+        transactions.forEach(t => {
+            const date = new Date(t.date);
+            const weekStart = this.getWeekStart(date);
+            const weekKey = weekStart.toISOString().split('T')[0];
+            
+            if (!weeks[weekKey]) {
+                weeks[weekKey] = {
+                    start: weekStart,
+                    transactions: []
+                };
+            }
+            weeks[weekKey].transactions.push(t);
+        });
+        
+        // Sort weeks by date (newest first)
+        const sortedWeeks = Object.keys(weeks).sort((a, b) => new Date(b) - new Date(a));
+        
+        container.innerHTML = sortedWeeks.map(weekKey => {
+            const week = weeks[weekKey];
+            const weekEnd = new Date(week.start);
+            weekEnd.setDate(weekEnd.getDate() + 6);
+            
+            const weekLabel = `${week.start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${weekEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+            
+            return `
+                <div class="week-section">
+                    <h3 class="week-header">${weekLabel}</h3>
+                    <table class="transactions-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Type</th>
+                                <th>Category</th>
+                                <th>Description</th>
+                                <th>Amount</th>
+                                <th>Credit Card</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${week.transactions.map(t => `
+                                <tr>
+                                    <td>${new Date(t.date).toLocaleDateString()}</td>
+                                    <td><span class="badge ${t.type}">${t.type.charAt(0).toUpperCase() + t.type.slice(1)}</span></td>
+                                    <td>${this.getCategoryName(t.category, t.type)}</td>
+                                    <td>${t.description}</td>
+                                    <td class="${t.type === 'income' ? 'text-success' : 'text-danger'}">
+                                        ${t.type === 'income' ? '+' : '-'}${this.formatCurrency(t.amount)}
+                                    </td>
+                                    <td>${t.card ? this.getCardName(t.card) : '-'}</td>
+                                    <td>
+                                        <button class="btn-edit" onclick="financeTracker.editTransaction('${t.id}')">
+                                            <i class="fas fa-edit"></i>
+                                        </button>
+                                        <button class="btn-danger" onclick="financeTracker.deleteTransaction('${t.id}')">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }).join('');
+    }
+    
+    getWeekStart(date) {
+        const d = new Date(date);
+        const day = d.getDay();
+        const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Adjust when day is Sunday
+        return new Date(d.setDate(diff));
     }
 
     openTransactionModal(transaction = null) {
@@ -1048,6 +1312,159 @@ class FinanceTracker {
         }
     }
 
+    // Debts
+    renderDebts() {
+        this.populateDebtFilters();
+        
+        let filteredDebts = [...this.data.debts];
+        
+        // Apply filters
+        const monthFilter = document.getElementById('debtMonthFilter').value;
+        const yearFilter = document.getElementById('debtYearFilter').value;
+        const statusFilter = document.getElementById('debtStatusFilter').value;
+        
+        if (monthFilter !== 'all') {
+            const monthIndex = parseInt(monthFilter);
+            filteredDebts = filteredDebts.filter(d => {
+                const debtDate = new Date(d.startDate);
+                return debtDate.getMonth() === monthIndex;
+            });
+        }
+        
+        if (yearFilter !== 'all') {
+            const year = parseInt(yearFilter);
+            filteredDebts = filteredDebts.filter(d => {
+                const debtDate = new Date(d.startDate);
+                return debtDate.getFullYear() === year;
+            });
+        }
+        
+        if (statusFilter !== 'all') {
+            filteredDebts = filteredDebts.filter(d => {
+                const progress = this.calculateDebtProgress(d);
+                return progress.status === statusFilter;
+            });
+        }
+        
+        this.renderDebtsTable(filteredDebts);
+    }
+
+    renderDebtsTable(debts) {
+        const tbody = document.getElementById('debtsTableBody');
+        
+        if (debts.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center">No debts found</td></tr>';
+            return;
+        }
+        
+        tbody.innerHTML = debts.map(debt => {
+            const progress = this.calculateDebtProgress(debt);
+            const card = this.data.cards.find(c => c.id === debt.card);
+            
+            return `
+                <tr>
+                    <td><strong>${debt.name}</strong></td>
+                    <td>${this.formatCurrency(debt.amount)}</td>
+                    <td>${progress.currentInstallments}/${debt.installments}</td>
+                    <td>${card ? card.name : 'N/A'}</td>
+                    <td>${new Date(debt.startDate).toLocaleDateString()}</td>
+                    <td><span class="badge ${progress.status}">${progress.status.charAt(0).toUpperCase() + progress.status.slice(1)}</span></td>
+                    <td>
+                        <button class="btn-edit" onclick="financeTracker.editDebt('${debt.id}')">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button class="btn-danger" onclick="financeTracker.deleteDebt('${debt.id}')">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    calculateDebtProgress(debt) {
+        const startDate = new Date(debt.startDate);
+        const now = new Date();
+        
+        // Calculate months difference
+        const monthsDiff = (now.getFullYear() - startDate.getFullYear()) * 12 + 
+                          (now.getMonth() - startDate.getMonth());
+        
+        const currentInstallments = Math.min(Math.max(0, monthsDiff + 1), debt.installments);
+        const status = currentInstallments >= debt.installments ? 'complete' : 'pending';
+        
+        return {
+            currentInstallments,
+            status
+        };
+    }
+
+    openDebtModal(debt = null) {
+        this.editingId = debt ? debt.id : null;
+        
+        document.getElementById('debtModalTitle').textContent = 
+            debt ? 'Edit Debt' : 'Add Debt';
+        
+        // Populate card options
+        const cardOptions = this.data.cards.map(card => 
+            `<option value="${card.id}">${card.name} (****${card.number})</option>`
+        ).join('');
+        document.getElementById('debtCard').innerHTML = 
+            '<option value="">Select Card</option>' + cardOptions;
+        
+        if (debt) {
+            document.getElementById('debtName').value = debt.name;
+            document.getElementById('debtAmount').value = debt.amount;
+            document.getElementById('debtInstallments').value = debt.installments;
+            document.getElementById('debtCard').value = debt.card;
+            document.getElementById('debtStartDate').value = debt.startDate;
+        } else {
+            document.getElementById('debtForm').reset();
+            document.getElementById('debtStartDate').value = new Date().toISOString().split('T')[0];
+        }
+        
+        document.getElementById('debtModal').style.display = 'block';
+    }
+
+    saveDebt() {
+        const formData = {
+            id: this.editingId || this.generateId(),
+            name: document.getElementById('debtName').value,
+            amount: parseFloat(document.getElementById('debtAmount').value),
+            installments: parseInt(document.getElementById('debtInstallments').value),
+            card: document.getElementById('debtCard').value,
+            startDate: document.getElementById('debtStartDate').value
+        };
+        
+        if (this.editingId) {
+            const index = this.data.debts.findIndex(d => d.id === this.editingId);
+            this.data.debts[index] = formData;
+        } else {
+            this.data.debts.push(formData);
+        }
+        
+        this.saveData();
+        this.closeModal(document.getElementById('debtModal'));
+        this.renderDebts();
+        this.renderDashboard();
+    }
+
+    editDebt(id) {
+        const debt = this.data.debts.find(d => d.id === id);
+        if (debt) {
+            this.openDebtModal(debt);
+        }
+    }
+
+    deleteDebt(id) {
+        if (confirm('Are you sure you want to delete this debt?')) {
+            this.data.debts = this.data.debts.filter(d => d.id !== id);
+            this.saveData();
+            this.renderDebts();
+            this.renderDashboard();
+        }
+    }
+
     // Utility Methods
     populateCategoryOptions() {
         const incomeOptions = this.data.categories.income.map(cat => 
@@ -1070,6 +1487,62 @@ class FinanceTracker {
         
         document.getElementById('categoryFilter').innerHTML = 
             '<option value="all">All Categories</option>' + allCategories;
+    }
+
+    populateMonthYearFilters() {
+        // Get unique years and months from transactions
+        const years = new Set();
+        const months = new Set();
+        
+        this.data.transactions.forEach(t => {
+            const date = new Date(t.date);
+            years.add(date.getFullYear());
+            months.add(date.getMonth());
+        });
+        
+        // Populate year filter
+        const yearOptions = Array.from(years).sort((a, b) => b - a).map(year => 
+            `<option value="${year}">${year}</option>`
+        ).join('');
+        document.getElementById('transactionYearFilter').innerHTML = 
+            '<option value="all">All Years</option>' + yearOptions;
+        
+        // Populate month filter
+        const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+            'July', 'August', 'September', 'October', 'November', 'December'];
+        const monthOptions = Array.from(months).sort((a, b) => b - a).map(month => 
+            `<option value="${month}">${monthNames[month]}</option>`
+        ).join('');
+        document.getElementById('transactionMonthFilter').innerHTML = 
+            '<option value="all">All Months</option>' + monthOptions;
+    }
+
+    populateDebtFilters() {
+        // Get unique years and months from debts
+        const years = new Set();
+        const months = new Set();
+        
+        this.data.debts.forEach(d => {
+            const date = new Date(d.startDate);
+            years.add(date.getFullYear());
+            months.add(date.getMonth());
+        });
+        
+        // Populate year filter
+        const yearOptions = Array.from(years).sort((a, b) => b - a).map(year => 
+            `<option value="${year}">${year}</option>`
+        ).join('');
+        document.getElementById('debtYearFilter').innerHTML = 
+            '<option value="all">All Years</option>' + yearOptions;
+        
+        // Populate month filter
+        const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+            'July', 'August', 'September', 'October', 'November', 'December'];
+        const monthOptions = Array.from(months).sort((a, b) => b - a).map(month => 
+            `<option value="${month}">${monthNames[month]}</option>`
+        ).join('');
+        document.getElementById('debtMonthFilter').innerHTML = 
+            '<option value="all">All Months</option>' + monthOptions;
     }
 
     populateCardOptions() {
@@ -1211,6 +1684,7 @@ class FinanceTracker {
                Array.isArray(data.transactions) && 
                Array.isArray(data.investments) && 
                Array.isArray(data.cards) && 
+               (Array.isArray(data.debts) || !data.debts) &&
                data.categories && 
                Array.isArray(data.categories.income) && 
                Array.isArray(data.categories.expense) &&
@@ -1226,6 +1700,7 @@ class FinanceTracker {
                         transactions: [],
                         investments: [],
                         cards: [],
+                        debts: [],
                         categories: {
                             income: [
                                 { id: 'salary', name: 'Salary', color: '#22c55e' },
