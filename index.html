@@ -9,7 +9,30 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body>
-    <div class="app-container">
+    <!-- Login Page -->
+    <div id="loginPage" class="login-container">
+        <div class="login-box">
+            <div class="login-header">
+                <i class="fas fa-wallet"></i>
+                <h1>Finance Tracker</h1>
+                <p>Enter password to access</p>
+            </div>
+            <form id="loginForm">
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" placeholder="Enter password" required autofocus>
+                </div>
+                <div id="loginError" class="error-message" style="display: none;">
+                    <i class="fas fa-exclamation-circle"></i> Incorrect password
+                </div>
+                <button type="submit" class="btn-primary login-btn">
+                    <i class="fas fa-lock"></i> Login
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <div class="app-container" id="appContainer" style="display: none;">
         <!-- Sidebar Navigation -->
         <nav class="sidebar">
             <div class="logo">
@@ -41,6 +64,14 @@
                     <i class="fas fa-file-invoice-dollar"></i>
                     <span>Debts</span>
                 </li>
+                <li class="nav-item" data-page="subscriptions">
+                    <i class="fas fa-sync-alt"></i>
+                    <span>Subscriptions</span>
+                </li>
+                <li class="nav-item" data-page="reminders">
+                    <i class="fas fa-bell"></i>
+                    <span>Reminders</span>
+                </li>
                 <li class="nav-item" data-page="settings">
                     <i class="fas fa-cog"></i>
                     <span>Settings</span>
@@ -54,10 +85,18 @@
             <div id="dashboard" class="page active">
                 <header class="page-header">
                     <h1>Dashboard</h1>
-                    <div class="month-selector">
-                        <button id="prevMonth" class="btn-icon"><i class="fas fa-chevron-left"></i></button>
-                        <span id="currentMonth">January 2024</span>
-                        <button id="nextMonth" class="btn-icon"><i class="fas fa-chevron-right"></i></button>
+                    <div style="display: flex; gap: 15px; align-items: center;">
+                        <div class="month-selector">
+                            <button id="prevMonth" class="btn-icon"><i class="fas fa-chevron-left"></i></button>
+                            <span id="currentMonth">January 2024</span>
+                            <button id="nextMonth" class="btn-icon"><i class="fas fa-chevron-right"></i></button>
+                        </div>
+                        <button id="themeToggle" class="btn-icon" title="Toggle Theme">
+                            <i class="fas fa-moon"></i>
+                        </button>
+                        <button id="hideAmountsBtn" class="btn-secondary" title="Hide/Show Amounts">
+                            <i class="fas fa-eye-slash"></i> Hide Amounts
+                        </button>
                     </div>
                 </header>
 
@@ -102,6 +141,22 @@
                         </div>
                     </div>
 
+                    <!-- Upcoming Reminders -->
+                    <div class="recent-transactions">
+                        <h3>Upcoming Reminders</h3>
+                        <div id="upcomingRemindersList" class="transactions-list">
+                            <!-- Reminders will be populated here -->
+                        </div>
+                    </div>
+
+                    <!-- Cards Overview -->
+                    <div class="cards-overview">
+                        <h3>My Cards</h3>
+                        <div id="cardsOverviewList" class="cards-overview-list">
+                            <!-- Cards will be populated here -->
+                        </div>
+                    </div>
+
                     <!-- Charts -->
                     <div class="charts-container">
                         <div class="chart-card">
@@ -121,16 +176,12 @@
                             <canvas id="monthlyTrendChart"></canvas>
                         </div>
                         <div class="chart-card">
-                            <h3>Investment Performance</h3>
+                            <h3>Current Investments</h3>
                             <canvas id="investmentPerformanceChart"></canvas>
                         </div>
-                    </div>
-
-                    <!-- Cards Overview -->
-                    <div class="cards-overview">
-                        <h3>My Cards</h3>
-                        <div id="cardsOverviewList" class="cards-overview-list">
-                            <!-- Cards will be populated here -->
+                        <div class="chart-card">
+                            <h3>Subscriptions by Category</h3>
+                            <canvas id="subscriptionsChart"></canvas>
                         </div>
                     </div>
 
@@ -161,6 +212,7 @@
 
                 <div class="transactions-content">
                     <div class="filters">
+                        <input type="text" id="globalSearch" placeholder="Search transactions, categories..." style="flex: 1; min-width: 200px;">
                         <select id="transactionTypeFilter">
                             <option value="all">All Types</option>
                             <option value="income">Income</option>
@@ -211,8 +263,6 @@
                                     <th>Investment</th>
                                     <th>Type</th>
                                     <th>Amount Invested</th>
-                                    <th>Current Value</th>
-                                    <th>Gain/Loss</th>
                                     <th>Date</th>
                                     <th>Actions</th>
                                 </tr>
@@ -221,6 +271,7 @@
                                 <!-- Investments will be populated here -->
                             </tbody>
                         </table>
+                        <div id="investmentsPagination"></div>
                     </div>
                 </div>
             </div>
@@ -315,6 +366,74 @@
                                 <!-- Debts will be populated here -->
                             </tbody>
                         </table>
+                        <div id="debtsPagination"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Subscriptions Page -->
+            <div id="subscriptions" class="page">
+                <header class="page-header">
+                    <h1>Subscriptions</h1>
+                    <button id="addSubscriptionBtn" class="btn-primary">
+                        <i class="fas fa-plus"></i> Add Subscription
+                    </button>
+                </header>
+
+                <div class="debts-content">
+                    <div class="debts-table">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Category</th>
+                                    <th>Amount</th>
+                                    <th>Frequency</th>
+                                    <th>Start Date</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="subscriptionsTableBody">
+                                <!-- Subscriptions will be populated here -->
+                            </tbody>
+                        </table>
+                        <div id="subscriptionsPagination"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Reminders Page -->
+            <div id="reminders" class="page">
+                <header class="page-header">
+                    <h1>Reminders</h1>
+                    <button id="addReminderBtn" class="btn-primary">
+                        <i class="fas fa-plus"></i> Add Reminder
+                    </button>
+                </header>
+
+                <div class="debts-content">
+                    <div class="filters">
+                        <label>Reminder Threshold (days):</label>
+                        <input type="number" id="reminderDaysThreshold" min="1" max="30" value="7" style="width: 100px;">
+                        <button class="btn-secondary" onclick="financeTracker.updateReminderThreshold()">Update</button>
+                    </div>
+                    <div class="debts-table">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Title</th>
+                                    <th>Description</th>
+                                    <th>Date</th>
+                                    <th>Status</th>
+                                    <th>Days Until</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="remindersTableBody">
+                                <!-- Reminders will be populated here -->
+                            </tbody>
+                        </table>
+                        <div id="remindersPagination"></div>
                     </div>
                 </div>
             </div>
@@ -326,6 +445,27 @@
                 </header>
 
                 <div class="settings-content">
+                    <div class="settings-section">
+                        <h3><i class="fas fa-cloud"></i> Cloud Storage Configuration</h3>
+                        <div class="form-group">
+                            <label for="googleScriptKey">Google Apps Script API Key</label>
+                            <input type="text" id="googleScriptKey" placeholder="Enter your Google Apps Script deployment ID" style="width: 100%; max-width: 500px;">
+                            <button id="saveApiKeyBtn" class="btn-primary" style="margin-top: 10px;">
+                                <i class="fas fa-save"></i> Save API Key
+                            </button>
+                        </div>
+                        <p class="settings-description">
+                            Enter your Google Apps Script deployment ID to enable cloud storage. 
+                            Your data will be stored in Google Apps Script instead of local storage.
+                            <br><br>
+                            <strong>How to get your API Key:</strong>
+                            <br>1. Create a Google Apps Script project
+                            <br>2. Deploy it as a web app
+                            <br>3. Copy the deployment ID from the URL (the part after /macros/s/)
+                            <br>4. Paste it here
+                        </p>
+                    </div>
+
                     <div class="settings-section">
                         <h3><i class="fas fa-download"></i> Data Management</h3>
                         <div class="settings-actions">
@@ -447,10 +587,6 @@
                     <input type="number" id="investmentAmount" step="0.01" required>
                 </div>
                 <div class="form-group">
-                    <label for="investmentCurrentValue">Current Value</label>
-                    <input type="number" id="investmentCurrentValue" step="0.01" required>
-                </div>
-                <div class="form-group">
                     <label for="investmentDate">Date</label>
                     <input type="date" id="investmentDate" required>
                 </div>
@@ -535,6 +671,82 @@
                 </div>
                 <div class="form-actions">
                     <button type="button" class="btn-secondary" id="cancelCategory">Cancel</button>
+                    <button type="submit" class="btn-primary">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Subscription Modal -->
+    <div id="subscriptionModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="subscriptionModalTitle">Add Subscription</h2>
+                <span class="close">&times;</span>
+            </div>
+            <form id="subscriptionForm">
+                <div class="form-group">
+                    <label for="subscriptionName">Service Name</label>
+                    <input type="text" id="subscriptionName" placeholder="e.g., Netflix, Spotify" required>
+                </div>
+                <div class="form-group">
+                    <label for="subscriptionCategory">Category</label>
+                    <select id="subscriptionCategory" required>
+                        <!-- Categories will be populated here -->
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="subscriptionAmount">Monthly Amount</label>
+                    <input type="number" id="subscriptionAmount" step="0.01" required>
+                </div>
+                <div class="form-group">
+                    <label for="subscriptionFrequency">Frequency</label>
+                    <select id="subscriptionFrequency" required>
+                        <option value="Monthly">Monthly</option>
+                        <option value="Yearly">Yearly</option>
+                        <option value="Weekly">Weekly</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="subscriptionStartDate">Start Date</label>
+                    <input type="date" id="subscriptionStartDate" required>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn-secondary" id="cancelSubscription">Cancel</button>
+                    <button type="submit" class="btn-primary">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Reminder Modal -->
+    <div id="reminderModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="reminderModalTitle">Add Reminder</h2>
+                <span class="close">&times;</span>
+            </div>
+            <form id="reminderForm">
+                <div class="form-group">
+                    <label for="reminderTitle">Title</label>
+                    <input type="text" id="reminderTitle" placeholder="e.g., Pay credit card bill" required>
+                </div>
+                <div class="form-group">
+                    <label for="reminderDescription">Description (Optional)</label>
+                    <textarea id="reminderDescription" rows="3" placeholder="Additional notes..."></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="reminderDate">Date</label>
+                    <input type="date" id="reminderDate" required>
+                </div>
+                <div class="form-group">
+                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                        <input type="checkbox" id="reminderRecurring" style="width: auto;">
+                        <span>Recurring Monthly</span>
+                    </label>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn-secondary" id="cancelReminder">Cancel</button>
                     <button type="submit" class="btn-primary">Save</button>
                 </div>
             </form>

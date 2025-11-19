@@ -5,6 +5,88 @@
     box-sizing: border-box;
 }
 
+/* Login Page */
+.login-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+}
+
+[data-theme="light"] .login-container {
+    background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 50%, #cbd5e1 100%);
+}
+
+.login-box {
+    background: rgba(30, 41, 59, 0.95);
+    padding: 40px;
+    border-radius: 20px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    border: 1px solid rgba(71, 85, 105, 0.3);
+    width: 100%;
+    max-width: 400px;
+    backdrop-filter: blur(10px);
+}
+
+[data-theme="light"] .login-box {
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(203, 213, 225, 0.3);
+}
+
+.login-header {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.login-header i {
+    font-size: 3rem;
+    color: #60a5fa;
+    margin-bottom: 15px;
+}
+
+.login-header h1 {
+    color: #e2e8f0;
+    font-size: 2rem;
+    margin-bottom: 10px;
+}
+
+[data-theme="light"] .login-header h1 {
+    color: #1e293b;
+}
+
+.login-header p {
+    color: #94a3b8;
+    font-size: 0.9rem;
+}
+
+[data-theme="light"] .login-header p {
+    color: #64748b;
+}
+
+.login-btn {
+    width: 100%;
+    margin-top: 20px;
+}
+
+.error-message {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: #ef4444;
+    padding: 12px;
+    border-radius: 8px;
+    margin-top: 15px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.9rem;
+}
+
+[data-theme="light"] .error-message {
+    background: rgba(239, 68, 68, 0.1);
+    border-color: rgba(239, 68, 68, 0.3);
+}
+
 body {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
@@ -118,6 +200,10 @@ body {
     padding: 10px 15px;
     border-radius: 10px;
     color: #e2e8f0;
+}
+
+[data-theme="light"] .month-selector {
+    color: #1e293b;
 }
 
 .btn-icon {
@@ -395,6 +481,22 @@ body {
 .badge.complete {
     background: rgba(34, 197, 94, 0.2);
     color: #22c55e;
+}
+
+.btn-success {
+    background: #22c55e;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.8rem;
+    transition: all 0.3s ease;
+    margin-right: 5px;
+}
+
+.btn-success:hover {
+    background: #16a34a;
 }
 
 .filters {
@@ -1006,4 +1108,226 @@ tr:hover {
 
 .about-info strong {
     color: #60a5fa;
+}
+
+/* Pagination */
+.pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+    margin-top: 20px;
+    padding: 20px 0;
+}
+
+.pagination-btn {
+    padding: 8px 16px;
+    border: 2px solid #475569;
+    background: #1e293b;
+    color: #e2e8f0;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-size: 0.9rem;
+}
+
+.pagination-btn:hover:not(:disabled) {
+    background: #60a5fa;
+    border-color: #60a5fa;
+    color: white;
+}
+
+.pagination-btn.active {
+    background: #60a5fa;
+    border-color: #60a5fa;
+    color: white;
+}
+
+.pagination-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.pagination-ellipsis {
+    padding: 8px 4px;
+    color: #94a3b8;
+}
+
+/* Reminder Items */
+.reminder-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px;
+    background: rgba(96, 165, 250, 0.05);
+    border-radius: 10px;
+    border-left: 4px solid #60a5fa;
+    color: #e2e8f0;
+    margin-bottom: 10px;
+}
+
+.reminder-item.urgent {
+    border-left-color: #ef4444;
+    background: rgba(239, 68, 68, 0.1);
+}
+
+.reminder-date {
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+.past-reminder {
+    opacity: 0.6;
+}
+
+/* Light Theme */
+[data-theme="light"] {
+    background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 50%, #cbd5e1 100%);
+    color: #1e293b;
+}
+
+[data-theme="light"] body {
+    background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 50%, #cbd5e1 100%);
+    color: #1e293b;
+}
+
+[data-theme="light"] .sidebar {
+    background: rgba(255, 255, 255, 0.95);
+    border-right: 1px solid rgba(203, 213, 225, 0.5);
+}
+
+[data-theme="light"] .page-header,
+[data-theme="light"] .card,
+[data-theme="light"] .chart-card,
+[data-theme="light"] .cards-overview,
+[data-theme="light"] .recent-transactions,
+[data-theme="light"] .transactions-content,
+[data-theme="light"] .investments-content,
+[data-theme="light"] .cards-content,
+[data-theme="light"] .categories-content,
+[data-theme="light"] .debts-content,
+[data-theme="light"] .settings-content {
+    background: rgba(255, 255, 255, 0.9);
+    border: 1px solid rgba(203, 213, 225, 0.3);
+    color: #1e293b;
+}
+
+[data-theme="light"] .page-header h1,
+[data-theme="light"] .card-content h3,
+[data-theme="light"] .chart-card h3,
+[data-theme="light"] .cards-overview h3,
+[data-theme="light"] .recent-transactions h3 {
+    color: #1e293b;
+}
+
+[data-theme="light"] .card-content .amount,
+[data-theme="light"] th,
+[data-theme="light"] td {
+    color: #1e293b;
+}
+
+[data-theme="light"] .card-overview-item,
+[data-theme="light"] .card-overview-header h4,
+[data-theme="light"] .card-overview-info p,
+[data-theme="light"] .transaction-item,
+[data-theme="light"] .transaction-item strong,
+[data-theme="light"] .category-item,
+[data-theme="light"] .category-name {
+    color: #1e293b;
+}
+
+[data-theme="light"] .settings-section h3,
+[data-theme="light"] .settings-description,
+[data-theme="light"] .about-info,
+[data-theme="light"] .about-info p {
+    color: #1e293b;
+}
+
+[data-theme="light"] .nav-item {
+    color: #1e293b;
+}
+
+[data-theme="light"] .nav-item:hover {
+    background: rgba(96, 165, 250, 0.2);
+}
+
+[data-theme="light"] .modal-content {
+    background: #ffffff;
+    color: #1e293b;
+}
+
+[data-theme="light"] .form-group input,
+[data-theme="light"] .form-group select,
+[data-theme="light"] .form-group textarea,
+[data-theme="light"] .filters select,
+[data-theme="light"] .filters input {
+    background: #f8fafc;
+    border-color: #cbd5e1;
+    color: #1e293b;
+}
+
+[data-theme="light"] .empty-state {
+    color: #64748b;
+}
+
+[data-theme="light"] .pagination-btn {
+    background: #f8fafc;
+    border-color: #cbd5e1;
+    color: #1e293b;
+}
+
+[data-theme="light"] .pagination-btn.active {
+    background: #60a5fa;
+    color: white;
+}
+
+/* Hide Amounts */
+.hide-amounts .amount,
+.hide-amounts [class*="currency"],
+.hide-amounts canvas {
+    filter: blur(5px);
+    pointer-events: none;
+}
+
+/* Textarea styling */
+.form-group textarea {
+    width: 100%;
+    padding: 12px 15px;
+    border: 2px solid #475569;
+    border-radius: 8px;
+    background: #1e293b;
+    color: #e2e8f0;
+    font-size: 0.9rem;
+    font-family: inherit;
+    resize: vertical;
+    transition: all 0.3s ease;
+}
+
+.form-group textarea:focus {
+    outline: none;
+    border-color: #60a5fa;
+    box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.1);
+}
+
+/* Additional responsive improvements */
+@media (max-width: 768px) {
+    .pagination {
+        flex-wrap: wrap;
+        gap: 5px;
+    }
+
+    .pagination-btn {
+        padding: 6px 12px;
+        font-size: 0.8rem;
+    }
+
+    .page-header {
+        flex-wrap: wrap;
+    }
+
+    #hideAmountsBtn,
+    #themeToggle {
+        font-size: 0.8rem;
+        padding: 8px 12px;
+    }
 }

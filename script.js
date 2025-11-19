@@ -1,9 +1,51 @@
+// Encryption/Decryption Utilities
+class EncryptionService {
+    constructor(key) {
+        this.key = key;
+    }
+
+    // Simple encryption using XOR cipher (for demonstration - in production use stronger encryption)
+    encrypt(text) {
+        if (!text) return '';
+        const textStr = JSON.stringify(text);
+        let result = '';
+        for (let i = 0; i < textStr.length; i++) {
+            result += String.fromCharCode(textStr.charCodeAt(i) ^ this.key.charCodeAt(i % this.key.length));
+        }
+        return btoa(result);
+    }
+
+    decrypt(encryptedText) {
+        if (!encryptedText) return null;
+        try {
+            const text = atob(encryptedText);
+            let result = '';
+            for (let i = 0; i < text.length; i++) {
+                result += String.fromCharCode(text.charCodeAt(i) ^ this.key.charCodeAt(i % this.key.length));
+            }
+            return JSON.parse(result);
+        } catch (e) {
+            console.error('Decryption error:', e);
+            return null;
+        }
+    }
+}
+
 // Finance Tracker Application
 class FinanceTracker {
     constructor() {
         this.currentPage = 'dashboard';
         this.currentMonth = new Date();
         this.editingId = null;
+        this.encryptionService = new EncryptionService('ByMoralesa');
+        this.hideAmounts = false;
+        this.theme = localStorage.getItem('financeTrackerTheme') || 'dark';
+        this.reminderDaysThreshold = parseInt(localStorage.getItem('reminderDaysThreshold')) || 7;
+        this.currentPageNumber = {};
+        this.itemsPerPage = 10;
+        this.googleScriptKey = localStorage.getItem('googleScriptKey') || null;
+        this.password = 'admin'; // Default password
+        this.isAuthenticated = sessionStorage.getItem('isAuthenticated') === 'true';
         
         // Initialize data structures
         this.data = {
@@ -11,6 +53,8 @@ class FinanceTracker {
             investments: [],
             cards: [],
             debts: [],
+            subscriptions: [],
+            reminders: [],
             categories: {
                 income: [
                     { id: 'salary', name: 'Salary', color: '#22c55e' },
@@ -42,27 +86,302 @@ class FinanceTracker {
         this.init();
     }
 
-    init() {
-        this.loadData();
+    async init() {
+        // Check authentication first
+        if (!this.isAuthenticated) {
+            this.showLoginPage();
+            return;
+        }
+        
+        this.showApp();
+        await this.loadData();
         this.setupEventListeners();
+        this.applyTheme();
         this.renderDashboard();
         this.renderCategories();
         this.updateMonthDisplay();
         this.setupCardTypeToggle();
+        this.loadSettings();
     }
 
-    // Data Management
-    loadData() {
+    showLoginPage() {
+        const loginPage = document.getElementById('loginPage');
+        const appContainer = document.getElementById('appContainer');
+        if (loginPage) loginPage.style.display = 'flex';
+        if (appContainer) appContainer.style.display = 'none';
+        
+        // Setup login form
+        const loginForm = document.getElementById('loginForm');
+        if (loginForm) {
+            loginForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                this.handleLogin();
+            });
+        }
+    }
+
+    showApp() {
+        const loginPage = document.getElementById('loginPage');
+        const appContainer = document.getElementById('appContainer');
+        if (loginPage) loginPage.style.display = 'none';
+        if (appContainer) {
+            appContainer.style.display = 'flex';
+        }
+    }
+
+    handleLogin() {
+        const passwordInput = document.getElementById('password');
+        const errorMessage = document.getElementById('loginError');
+        
+        if (passwordInput && passwordInput.value === this.password) {
+            this.isAuthenticated = true;
+            sessionStorage.setItem('isAuthenticated', 'true');
+            this.showApp();
+            // Initialize app after login
+            this.loadData().then(() => {
+                this.setupEventListeners();
+                this.applyTheme();
+                this.renderDashboard();
+                this.renderCategories();
+                this.updateMonthDisplay();
+                this.setupCardTypeToggle();
+                this.loadSettings();
+            });
+        } else {
+            if (errorMessage) {
+                errorMessage.style.display = 'block';
+            }
+            if (passwordInput) {
+                passwordInput.value = '';
+                passwordInput.focus();
+            }
+        }
+    }
+
+    loadSettings() {
+        // Load API key into settings page
+        const apiKeyInput = document.getElementById('googleScriptKey');
+        if (apiKeyInput && this.googleScriptKey) {
+            apiKeyInput.value = this.googleScriptKey;
+        }
+    }
+
+    // Data Management with Encryption
+    async loadData() {
+        if (this.googleScriptKey) {
+            // Load from Google Apps Script
+            try {
+                const response = await fetch(`https://script.google.com/macros/s/${this.googleScriptKey}/exec?action=read`);
+                const result = await response.text();
+                if (result != '') {
+                    try {
+                        // Try to decrypt first
+                        const decrypted = this.encryptionService.decrypt(result);
+                        if (decrypted) {
+                            this.data = { ...this.data, ...decrypted };
+                        } else {
+                            // Fallback: try parsing as plain JSON
+                            try {
+                                const parsed = JSON.parse(result.data);
+                                this.data = { ...this.data, ...parsed };
+                                await this.saveData(); // Re-save encrypted
+                            } catch (e) {
+                                console.error('Failed to parse data:', e);
+                            }
+                        }
+                    } catch (e) {
+                        console.error('Failed to decrypt data:', e);
+                    }
+                }
+            } catch (e) {
+                console.error('Failed to load data from Google Apps Script:', e);
+                // Fallback to localStorage
+                this.loadDataFromLocalStorage();
+            }
+        } else {
+            // Load from localStorage
+            this.loadDataFromLocalStorage();
+        }
+        
+        // Initialize missing arrays
+        if (!this.data.subscriptions) this.data.subscriptions = [];
+        if (!this.data.reminders) this.data.reminders = [];
+        
+        // Save to ensure data structure is correct (only if we have data)
+        if (this.data.transactions.length > 0 || this.data.investments.length > 0 || this.data.cards.length > 0) {
+            await this.saveData();
+        }
+    }
+
+    loadDataFromLocalStorage() {
         const savedData = localStorage.getItem('financeTrackerData');
         if (savedData) {
-            const parsed = JSON.parse(savedData);
-            this.data = { ...this.data, ...parsed };
+            try {
+                // Try to decrypt first
+                const decrypted = this.encryptionService.decrypt(savedData);
+                if (decrypted) {
+                    this.data = { ...this.data, ...decrypted };
+                } else {
+                    // Fallback: try parsing as plain JSON (for migration)
+                    try {
+                        const parsed = JSON.parse(savedData);
+                        this.data = { ...this.data, ...parsed };
+                        // Note: saveData will be called by loadData after this
+                    } catch (e) {
+                        console.error('Failed to load data:', e);
+                    }
+                }
+            } catch (e) {
+                console.error('Failed to decrypt data:', e);
+            }
         }
-        this.saveData();
     }
 
-    saveData() {
-        localStorage.setItem('financeTrackerData', JSON.stringify(this.data));
+    async saveData() {
+        const encrypted = this.encryptionService.encrypt(this.data);
+    
+        if (this.googleScriptKey) {
+            try {
+                const url = `https://script.google.com/macros/s/${this.googleScriptKey}/exec?action=save`;
+                const response = await fetch(url, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "text/plain" // simple, sin JSON
+                    },
+                    body: encrypted
+                });
+    
+                const result = await response.text();
+    
+                if (result !== "ok") {
+                    console.error("Failed to save:", result);
+                    localStorage.setItem("financeTrackerData", encrypted);
+                }
+            } catch (e) {
+                console.error("Error saving to Google Apps Script:", e);
+                localStorage.setItem("financeTrackerData", encrypted);
+            }
+        } else {
+            localStorage.setItem("financeTrackerData", encrypted);
+        }
+    }
+    
+    
+
+    // Date utility to fix timezone issues
+    formatDateString(dateString) {
+        if (!dateString) return '';
+        // Parse date string directly without timezone conversion
+        const parts = dateString.split('-');
+        if (parts.length === 3) {
+            const year = parseInt(parts[0]);
+            const month = parseInt(parts[1]) - 1;
+            const day = parseInt(parts[2]);
+            return new Date(year, month, day).toLocaleDateString();
+        }
+        return new Date(dateString).toLocaleDateString();
+    }
+
+    // Format currency with hide amounts option
+    formatCurrency(amount) {
+        if (this.hideAmounts) {
+            // Replace all digits with asterisks
+            const formatted = new Intl.NumberFormat('en-US', {
+                style: 'currency',
+                currency: 'USD'
+            }).format(amount);
+            return formatted.replace(/\d/g, '*');
+        }
+        return new Intl.NumberFormat('en-US', {
+            style: 'currency',
+            currency: 'USD'
+        }).format(amount);
+    }
+
+    // Format number with hide amounts option
+    formatNumber(number) {
+        if (this.hideAmounts) {
+            return number.toString().replace(/\d/g, '*');
+        }
+        return number.toString();
+    }
+
+    // Theme Management
+    applyTheme() {
+        document.body.setAttribute('data-theme', this.theme);
+        const themeToggle = document.getElementById('themeToggle');
+        if (themeToggle) {
+            themeToggle.innerHTML = this.theme === 'dark' 
+                ? '<i class="fas fa-sun"></i>' 
+                : '<i class="fas fa-moon"></i>';
+        }
+    }
+
+    toggleTheme() {
+        this.theme = this.theme === 'dark' ? 'light' : 'dark';
+        localStorage.setItem('financeTrackerTheme', this.theme);
+        this.applyTheme();
+    }
+
+    toggleHideAmounts() {
+        this.hideAmounts = !this.hideAmounts;
+        const btn = document.getElementById('hideAmountsBtn');
+        if (btn) {
+            btn.innerHTML = this.hideAmounts 
+                ? '<i class="fas fa-eye"></i> Show Amounts' 
+                : '<i class="fas fa-eye-slash"></i> Hide Amounts';
+            btn.classList.toggle('active', this.hideAmounts);
+        }
+        // Re-render all pages to update amounts
+        this.renderDashboard();
+        if (this.currentPage === 'transactions') this.renderTransactions();
+        if (this.currentPage === 'investments') this.renderInvestments();
+        if (this.currentPage === 'debts') this.renderDebts();
+        if (this.currentPage === 'subscriptions') this.renderSubscriptions();
+    }
+
+    // Pagination helper
+    paginateArray(array, page, itemsPerPage) {
+        const start = (page - 1) * itemsPerPage;
+        const end = start + itemsPerPage;
+        return {
+            data: array.slice(start, end),
+            totalPages: Math.ceil(array.length / itemsPerPage),
+            currentPage: page,
+            totalItems: array.length
+        };
+    }
+
+    renderPagination(containerId, currentPage, totalPages, callback) {
+        const container = document.getElementById(containerId);
+        if (!container || totalPages <= 1) {
+            if (container) container.innerHTML = '';
+            return;
+        }
+
+        let paginationHTML = '<div class="pagination">';
+        
+        // Previous button
+        paginationHTML += `<button class="pagination-btn" ${currentPage === 1 ? 'disabled' : ''} onclick="${callback}(${currentPage - 1})">
+            <i class="fas fa-chevron-left"></i> Previous
+        </button>`;
+
+        // Page numbers
+        for (let i = 1; i <= totalPages; i++) {
+            if (i === 1 || i === totalPages || (i >= currentPage - 2 && i <= currentPage + 2)) {
+                paginationHTML += `<button class="pagination-btn ${i === currentPage ? 'active' : ''}" onclick="${callback}(${i})">${i}</button>`;
+            } else if (i === currentPage - 3 || i === currentPage + 3) {
+                paginationHTML += '<span class="pagination-ellipsis">...</span>';
+            }
+        }
+
+        // Next button
+        paginationHTML += `<button class="pagination-btn" ${currentPage === totalPages ? 'disabled' : ''} onclick="${callback}(${currentPage + 1})">
+            Next <i class="fas fa-chevron-right"></i>
+        </button>`;
+
+        paginationHTML += '</div>';
+        container.innerHTML = paginationHTML;
     }
 
     // Event Listeners
@@ -109,6 +428,20 @@ class FinanceTracker {
             this.openDebtModal();
         });
 
+        const addSubscriptionBtn = document.getElementById('addSubscriptionBtn');
+        if (addSubscriptionBtn) {
+            addSubscriptionBtn.addEventListener('click', () => {
+                this.openSubscriptionModal();
+            });
+        }
+
+        const addReminderBtn = document.getElementById('addReminderBtn');
+        if (addReminderBtn) {
+            addReminderBtn.addEventListener('click', () => {
+                this.openReminderModal();
+            });
+        }
+
         // Modal close events
         document.querySelectorAll('.close').forEach(closeBtn => {
             closeBtn.addEventListener('click', (e) => {
@@ -142,6 +475,22 @@ class FinanceTracker {
             this.saveDebt();
         });
 
+        const subscriptionForm = document.getElementById('subscriptionForm');
+        if (subscriptionForm) {
+            subscriptionForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                this.saveSubscription();
+            });
+        }
+
+        const reminderForm = document.getElementById('reminderForm');
+        if (reminderForm) {
+            reminderForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                this.saveReminder();
+            });
+        }
+
         // Cancel buttons
         document.getElementById('cancelTransaction').addEventListener('click', () => {
             this.closeModal(document.getElementById('transactionModal'));
@@ -163,6 +512,20 @@ class FinanceTracker {
             this.closeModal(document.getElementById('debtModal'));
         });
 
+        const cancelSubscription = document.getElementById('cancelSubscription');
+        if (cancelSubscription) {
+            cancelSubscription.addEventListener('click', () => {
+                this.closeModal(document.getElementById('subscriptionModal'));
+            });
+        }
+
+        const cancelReminder = document.getElementById('cancelReminder');
+        if (cancelReminder) {
+            cancelReminder.addEventListener('click', () => {
+                this.closeModal(document.getElementById('reminderModal'));
+            });
+        }
+
         // Settings page events
         document.getElementById('exportDataBtn').addEventListener('click', () => {
             this.exportData();
@@ -179,6 +542,14 @@ class FinanceTracker {
         document.getElementById('clearDataBtn').addEventListener('click', () => {
             this.clearAllData();
         });
+
+        // Save API key button
+        const saveApiKeyBtn = document.getElementById('saveApiKeyBtn');
+        if (saveApiKeyBtn) {
+            saveApiKeyBtn.addEventListener('click', () => {
+                this.saveApiKey();
+            });
+        }
 
         // Filters
         document.getElementById('transactionTypeFilter').addEventListener('change', () => {
@@ -244,6 +615,24 @@ class FinanceTracker {
                 this.closeModal(e.target);
             }
         });
+
+        // Theme toggle
+        const themeToggle = document.getElementById('themeToggle');
+        if (themeToggle) {
+            themeToggle.addEventListener('click', () => this.toggleTheme());
+        }
+
+        // Hide amounts toggle
+        const hideAmountsBtn = document.getElementById('hideAmountsBtn');
+        if (hideAmountsBtn) {
+            hideAmountsBtn.addEventListener('click', () => this.toggleHideAmounts());
+        }
+
+        // Global search
+        const globalSearch = document.getElementById('globalSearch');
+        if (globalSearch) {
+            globalSearch.addEventListener('input', (e) => this.handleGlobalSearch(e.target.value));
+        }
     }
 
     setupCardTypeToggle() {
@@ -309,10 +698,54 @@ class FinanceTracker {
             case 'debts':
                 this.renderDebts();
                 break;
+            case 'subscriptions':
+                this.renderSubscriptions();
+                break;
+            case 'reminders':
+                this.renderReminders();
+                break;
             case 'settings':
                 // Settings page doesn't need special rendering
                 break;
         }
+    }
+
+    // Global Search
+    handleGlobalSearch(query) {
+        if (!query || query.length < 2) {
+            // Clear search results if query is too short
+            return;
+        }
+        const results = this.searchAll(query);
+        this.displaySearchResults(results);
+    }
+
+    searchAll(query) {
+        const lowerQuery = query.toLowerCase();
+        const results = {
+            transactions: this.data.transactions.filter(t => 
+                t.description.toLowerCase().includes(lowerQuery) ||
+                this.getCategoryName(t.category, t.type).toLowerCase().includes(lowerQuery)
+            ),
+            debts: this.data.debts.filter(d => 
+                d.name.toLowerCase().includes(lowerQuery)
+            ),
+            subscriptions: this.data.subscriptions.filter(s => 
+                s.name.toLowerCase().includes(lowerQuery) ||
+                s.category.toLowerCase().includes(lowerQuery)
+            ),
+            reminders: this.data.reminders.filter(r => 
+                r.title.toLowerCase().includes(lowerQuery) ||
+                (r.description && r.description.toLowerCase().includes(lowerQuery))
+            )
+        };
+        return results;
+    }
+
+    displaySearchResults(results) {
+        // This could be implemented as a modal or dropdown
+        // For now, we'll just highlight matching items in current view
+        console.log('Search results:', results);
     }
 
     // Dashboard
@@ -323,6 +756,8 @@ class FinanceTracker {
         this.renderCardsOverview();
         this.renderDebtsChart();
         this.renderRecentTransactions();
+        this.renderUpcomingReminders();
+        this.renderSubscriptionsChart();
     }
 
     getMonthData(date) {
@@ -356,11 +791,13 @@ class FinanceTracker {
     }
 
     renderCharts(data) {
+        // Always show charts, but amounts will be hidden via formatCurrency
         this.renderIncomeExpenseChart(data);
         this.renderExpenseCategoryChart(data.expenseTransactions);
         this.renderInvestmentAllocationChart();
-        this.renderInvestmentPerformanceChart();
+        this.renderCurrentInvestmentsChart();
         this.renderMonthlyTrendChart();
+        this.renderSubscriptionsChart();
     }
 
     renderIncomeExpenseChart(data) {
@@ -387,6 +824,16 @@ class FinanceTracker {
                 plugins: {
                     legend: {
                         position: 'bottom'
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                if (this.hideAmounts) {
+                                    return context.label + ': ***';
+                                }
+                                return context.label + ': $' + context.parsed.toLocaleString();
+                            }.bind(this)
+                        }
                     }
                 }
             }
@@ -432,6 +879,16 @@ class FinanceTracker {
                 plugins: {
                     legend: {
                         display: false
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                if (this.hideAmounts) {
+                                    return context.label + ': ***';
+                                }
+                                return context.label + ': $' + context.parsed.y.toLocaleString();
+                            }.bind(this)
+                        }
                     }
                 },
                 scales: {
@@ -439,8 +896,11 @@ class FinanceTracker {
                         beginAtZero: true,
                         ticks: {
                             callback: function(value) {
+                                if (this.hideAmounts) {
+                                    return '***';
+                                }
                                 return '$' + value.toLocaleString();
-                            }
+                            }.bind(this)
                         }
                     }
                 }
@@ -504,8 +964,11 @@ class FinanceTracker {
                             label: function(context) {
                                 const total = context.dataset.data.reduce((a, b) => a + b, 0);
                                 const percentage = ((context.parsed / total) * 100).toFixed(1);
+                                if (this.hideAmounts) {
+                                    return context.label + ': *** (' + percentage + '%)';
+                                }
                                 return context.label + ': $' + context.parsed.toLocaleString() + ' (' + percentage + '%)';
-                            }
+                            }.bind(this)
                         }
                     }
                 }
@@ -513,7 +976,7 @@ class FinanceTracker {
         });
     }
 
-    renderInvestmentPerformanceChart() {
+    renderCurrentInvestmentsChart() {
         const ctx = document.getElementById('investmentPerformanceChart').getContext('2d');
         
         if (this.data.investments.length === 0) {
@@ -525,18 +988,21 @@ class FinanceTracker {
             return;
         }
 
-        const investments = this.data.investments.map(inv => ({
-            name: inv.name,
-            gainLoss: inv.currentValue - inv.amountInvested,
-            gainLossPercent: ((inv.currentValue - inv.amountInvested) / inv.amountInvested) * 100
-        }));
+        // Group investments by type and show current values
+        const typeTotals = {};
+        this.data.investments.forEach(inv => {
+            if (!typeTotals[inv.type]) {
+                typeTotals[inv.type] = 0;
+            }
+            typeTotals[inv.type] += inv.currentValue;
+        });
 
-        // Sort by gain/loss percentage
-        investments.sort((a, b) => b.gainLossPercent - a.gainLossPercent);
-
-        const names = investments.map(inv => inv.name.length > 15 ? inv.name.substring(0, 15) + '...' : inv.name);
-        const percentages = investments.map(inv => inv.gainLossPercent);
-        const colors = percentages.map(pct => pct >= 0 ? '#22c55e' : '#ef4444');
+        const types = Object.keys(typeTotals);
+        const values = Object.values(typeTotals);
+        const colors = types.map(type => {
+            const investmentType = this.data.categories.investment.find(cat => cat.id === type);
+            return investmentType ? investmentType.color : '#6b7280';
+        });
 
         if (this.investmentPerformanceChart) {
             this.investmentPerformanceChart.destroy();
@@ -545,9 +1011,13 @@ class FinanceTracker {
         this.investmentPerformanceChart = new Chart(ctx, {
             type: 'bar',
             data: {
-                labels: names,
+                labels: types.map(type => {
+                    const investmentType = this.data.categories.investment.find(cat => cat.id === type);
+                    return investmentType ? investmentType.name : type;
+                }),
                 datasets: [{
-                    data: percentages,
+                    label: 'Current Value',
+                    data: values,
                     backgroundColor: colors,
                     borderRadius: 8
                 }]
@@ -562,9 +1032,11 @@ class FinanceTracker {
                     tooltip: {
                         callbacks: {
                             label: function(context) {
-                                const inv = investments[context.dataIndex];
-                                return inv.name + ': ' + (inv.gainLossPercent >= 0 ? '+' : '') + inv.gainLossPercent.toFixed(2) + '%';
-                            }
+                                if (this.hideAmounts) {
+                                    return 'Current Value: ***';
+                                }
+                                return 'Current Value: $' + context.parsed.y.toLocaleString();
+                            }.bind(this)
                         }
                     }
                 },
@@ -573,8 +1045,79 @@ class FinanceTracker {
                         beginAtZero: true,
                         ticks: {
                             callback: function(value) {
-                                return value.toFixed(1) + '%';
-                            }
+                                if (this.hideAmounts) {
+                                    return '***';
+                                }
+                                return '$' + value.toLocaleString();
+                            }.bind(this)
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    renderSubscriptionsChart() {
+        const ctx = document.getElementById('subscriptionsChart');
+        if (!ctx) return;
+        const chartCtx = ctx.getContext('2d');
+        
+        if (this.data.subscriptions.length === 0) {
+            chartCtx.clearRect(0, 0, chartCtx.canvas.width, chartCtx.canvas.height);
+            chartCtx.fillStyle = '#94a3b8';
+            chartCtx.font = '16px Arial';
+            chartCtx.textAlign = 'center';
+            chartCtx.fillText('No subscriptions yet', chartCtx.canvas.width / 2, chartCtx.canvas.height / 2);
+            return;
+        }
+
+        // Group by category
+        const categoryTotals = {};
+        this.data.subscriptions.forEach(sub => {
+            categoryTotals[sub.category] = (categoryTotals[sub.category] || 0) + sub.amount;
+        });
+
+        const categories = Object.keys(categoryTotals);
+        const amounts = Object.values(categoryTotals);
+        const colors = categories.map(cat => {
+            const category = this.data.categories.expense.find(c => c.id === cat);
+            return category ? category.color : '#6b7280';
+        });
+
+        if (this.subscriptionsChart) {
+            this.subscriptionsChart.destroy();
+        }
+
+        this.subscriptionsChart = new Chart(chartCtx, {
+            type: 'doughnut',
+            data: {
+                labels: categories.map(cat => {
+                    const category = this.data.categories.expense.find(c => c.id === cat);
+                    return category ? category.name : cat;
+                }),
+                datasets: [{
+                    data: amounts,
+                    backgroundColor: colors,
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom'
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                const percentage = ((context.parsed / total) * 100).toFixed(1);
+                                if (this.hideAmounts) {
+                                    return context.label + ': *** (' + percentage + '%)';
+                                }
+                                return context.label + ': $' + context.parsed.toLocaleString() + ' (' + percentage + '%)';
+                            }.bind(this)
                         }
                     }
                 }
@@ -635,8 +1178,23 @@ class FinanceTracker {
                         beginAtZero: true,
                         ticks: {
                             callback: function(value) {
+                                if (this.hideAmounts) {
+                                    return '***';
+                                }
                                 return '$' + value.toLocaleString();
-                            }
+                            }.bind(this)
+                        }
+                    }
+                },
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                if (this.hideAmounts) {
+                                    return context.dataset.label + ': ***';
+                                }
+                                return context.dataset.label + ': $' + context.parsed.y.toLocaleString();
+                            }.bind(this)
                         }
                     }
                 }
@@ -758,8 +1316,11 @@ class FinanceTracker {
                     tooltip: {
                         callbacks: {
                             label: function(context) {
-                                return context.dataset.label + ': ' + '$' + context.parsed.y.toLocaleString();
-                            }
+                                if (this.hideAmounts) {
+                                    return context.dataset.label + ': ***';
+                                }
+                                return context.dataset.label + ': $' + context.parsed.y.toLocaleString();
+                            }.bind(this)
                         }
                     }
                 },
@@ -772,8 +1333,11 @@ class FinanceTracker {
                         beginAtZero: true,
                         ticks: {
                             callback: function(value) {
+                                if (this.hideAmounts) {
+                                    return '***';
+                                }
                                 return '$' + value.toLocaleString();
-                            }
+                            }.bind(this)
                         }
                     }
                 }
@@ -797,7 +1361,7 @@ class FinanceTracker {
             <div class="transaction-item ${t.type}">
                 <div>
                     <strong>${t.description}</strong>
-                    <div style="font-size: 0.8rem; opacity: 0.7;">${this.getCategoryName(t.category, t.type)} • ${new Date(t.date).toLocaleDateString()}</div>
+                    <div style="font-size: 0.8rem; opacity: 0.7;">${this.getCategoryName(t.category, t.type)} • ${this.formatDateString(t.date)}</div>
                 </div>
                 <div class="amount ${t.type === 'income' ? 'text-success' : 'text-danger'}">
                     ${t.type === 'income' ? '+' : '-'}${this.formatCurrency(t.amount)}
@@ -806,10 +1370,70 @@ class FinanceTracker {
         `).join('');
     }
 
+    renderUpcomingReminders() {
+        const container = document.getElementById('upcomingRemindersList');
+        if (!container) return;
+
+        const now = new Date();
+        const thresholdDate = new Date(now);
+        thresholdDate.setDate(thresholdDate.getDate() + this.reminderDaysThreshold);
+
+        const upcomingReminders = this.data.reminders
+            .filter(r => {
+                const status = r.status || 'pending';
+                if (status !== 'pending') return false;
+                const reminderDate = new Date(r.date);
+                return reminderDate >= now && reminderDate <= thresholdDate;
+            })
+            .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+        if (upcomingReminders.length === 0) {
+            container.innerHTML = '<div class="empty-state"><i class="fas fa-bell"></i><h3>No upcoming reminders</h3><p>All caught up!</p></div>';
+            return;
+        }
+
+        container.innerHTML = upcomingReminders.map(r => {
+            const reminderDate = new Date(r.date);
+            const daysUntil = Math.ceil((reminderDate - now) / (1000 * 60 * 60 * 24));
+            return `
+                <div class="reminder-item ${daysUntil <= 3 ? 'urgent' : ''}">
+                    <div>
+                        <strong>${r.title}</strong>
+                        ${r.description ? `<div style="font-size: 0.8rem; opacity: 0.7;">${r.description}</div>` : ''}
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <div class="reminder-date ${daysUntil <= 3 ? 'text-danger' : daysUntil <= 7 ? 'text-warning' : ''}">
+                            ${daysUntil === 0 ? 'Today' : daysUntil === 1 ? 'Tomorrow' : `${daysUntil} days`}
+                        </div>
+                        <button class="btn-success" onclick="financeTracker.markReminderComplete('${r.id}')" title="Mark as Complete" style="padding: 6px 12px; font-size: 0.8rem;">
+                            <i class="fas fa-check"></i> Complete
+                        </button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
     // Transactions
     renderTransactions() {
+        // Preserve current filter values
+        const currentCategory = document.getElementById('categoryFilter')?.value || 'all';
+        const currentMonth = document.getElementById('transactionMonthFilter')?.value || 'all';
+        const currentYear = document.getElementById('transactionYearFilter')?.value || 'all';
+        
         this.populateCategoryFilter();
         this.populateMonthYearFilters();
+        
+        // Restore filter values
+        if (document.getElementById('categoryFilter')) {
+            document.getElementById('categoryFilter').value = currentCategory;
+        }
+        if (document.getElementById('transactionMonthFilter')) {
+            document.getElementById('transactionMonthFilter').value = currentMonth;
+        }
+        if (document.getElementById('transactionYearFilter')) {
+            document.getElementById('transactionYearFilter').value = currentYear;
+        }
         
         let filteredTransactions = [...this.data.transactions];
         
@@ -902,7 +1526,7 @@ class FinanceTracker {
                         <tbody>
                             ${week.transactions.map(t => `
                                 <tr>
-                                    <td>${new Date(t.date).toLocaleDateString()}</td>
+                                    <td>${this.formatDateString(t.date)}</td>
                                     <td><span class="badge ${t.type}">${t.type.charAt(0).toUpperCase() + t.type.slice(1)}</span></td>
                                     <td>${this.getCategoryName(t.category, t.type)}</td>
                                     <td>${t.description}</td>
@@ -1015,24 +1639,21 @@ class FinanceTracker {
         const tbody = document.getElementById('investmentsTableBody');
         
         if (this.data.investments.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="7" class="text-center">No investments yet</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center">No investments yet</td></tr>';
             return;
         }
         
-        tbody.innerHTML = this.data.investments.map(inv => {
-            const gainLoss = inv.currentValue - inv.amountInvested;
-            const gainLossPercent = ((gainLoss / inv.amountInvested) * 100).toFixed(2);
-            
+        // Apply pagination
+        const page = this.currentPageNumber['investments'] || 1;
+        const paginated = this.paginateArray(this.data.investments, page, this.itemsPerPage);
+        
+        tbody.innerHTML = paginated.data.map(inv => {
             return `
                 <tr>
                     <td><strong>${inv.name}</strong></td>
                     <td><span class="badge">${inv.type.charAt(0).toUpperCase() + inv.type.slice(1)}</span></td>
                     <td>${this.formatCurrency(inv.amountInvested)}</td>
-                    <td>${this.formatCurrency(inv.currentValue)}</td>
-                    <td class="${gainLoss >= 0 ? 'text-success' : 'text-danger'}">
-                        ${gainLoss >= 0 ? '+' : ''}${this.formatCurrency(gainLoss)} (${gainLossPercent}%)
-                    </td>
-                    <td>${new Date(inv.date).toLocaleDateString()}</td>
+                    <td>${this.formatDateString(inv.date)}</td>
                     <td>
                         <button class="btn-edit" onclick="financeTracker.editInvestment('${inv.id}')">
                             <i class="fas fa-edit"></i>
@@ -1044,6 +1665,14 @@ class FinanceTracker {
                 </tr>
             `;
         }).join('');
+        
+        // Render pagination
+        this.renderPagination('investmentsPagination', page, paginated.totalPages, 'financeTracker.goToInvestmentsPage');
+    }
+
+    goToInvestmentsPage(page) {
+        this.currentPageNumber['investments'] = page;
+        this.renderInvestments();
     }
 
     openInvestmentModal(investment = null) {
@@ -1059,7 +1688,6 @@ class FinanceTracker {
             document.getElementById('investmentName').value = investment.name;
             document.getElementById('investmentType').value = investment.type;
             document.getElementById('investmentAmount').value = investment.amountInvested;
-            document.getElementById('investmentCurrentValue').value = investment.currentValue;
             document.getElementById('investmentDate').value = investment.date;
         } else {
             document.getElementById('investmentForm').reset();
@@ -1075,7 +1703,7 @@ class FinanceTracker {
             name: document.getElementById('investmentName').value,
             type: document.getElementById('investmentType').value,
             amountInvested: parseFloat(document.getElementById('investmentAmount').value),
-            currentValue: parseFloat(document.getElementById('investmentCurrentValue').value),
+            currentValue: parseFloat(document.getElementById('investmentAmount').value), // Use amount invested as current value
             date: document.getElementById('investmentDate').value
         };
         
@@ -1314,7 +1942,23 @@ class FinanceTracker {
 
     // Debts
     renderDebts() {
+        // Preserve current filter values
+        const currentMonth = document.getElementById('debtMonthFilter')?.value || 'all';
+        const currentYear = document.getElementById('debtYearFilter')?.value || 'all';
+        const currentStatus = document.getElementById('debtStatusFilter')?.value || 'all';
+        
         this.populateDebtFilters();
+        
+        // Restore filter values
+        if (document.getElementById('debtMonthFilter')) {
+            document.getElementById('debtMonthFilter').value = currentMonth;
+        }
+        if (document.getElementById('debtYearFilter')) {
+            document.getElementById('debtYearFilter').value = currentYear;
+        }
+        if (document.getElementById('debtStatusFilter')) {
+            document.getElementById('debtStatusFilter').value = currentStatus;
+        }
         
         let filteredDebts = [...this.data.debts];
         
@@ -1352,12 +1996,17 @@ class FinanceTracker {
     renderDebtsTable(debts) {
         const tbody = document.getElementById('debtsTableBody');
         
-        if (debts.length === 0) {
+        // Apply pagination
+        const page = this.currentPageNumber['debts'] || 1;
+        const paginated = this.paginateArray(debts, page, this.itemsPerPage);
+        
+        if (paginated.data.length === 0) {
             tbody.innerHTML = '<tr><td colspan="7" class="text-center">No debts found</td></tr>';
+            this.renderPagination('debtsPagination', 1, 0, 'financeTracker.goToDebtsPage');
             return;
         }
         
-        tbody.innerHTML = debts.map(debt => {
+        tbody.innerHTML = paginated.data.map(debt => {
             const progress = this.calculateDebtProgress(debt);
             const card = this.data.cards.find(c => c.id === debt.card);
             
@@ -1367,7 +2016,7 @@ class FinanceTracker {
                     <td>${this.formatCurrency(debt.amount)}</td>
                     <td>${progress.currentInstallments}/${debt.installments}</td>
                     <td>${card ? card.name : 'N/A'}</td>
-                    <td>${new Date(debt.startDate).toLocaleDateString()}</td>
+                    <td>${this.formatDateString(debt.startDate)}</td>
                     <td><span class="badge ${progress.status}">${progress.status.charAt(0).toUpperCase() + progress.status.slice(1)}</span></td>
                     <td>
                         <button class="btn-edit" onclick="financeTracker.editDebt('${debt.id}')">
@@ -1380,6 +2029,14 @@ class FinanceTracker {
                 </tr>
             `;
         }).join('');
+        
+        // Render pagination
+        this.renderPagination('debtsPagination', page, paginated.totalPages, 'financeTracker.goToDebtsPage');
+    }
+
+    goToDebtsPage(page) {
+        this.currentPageNumber['debts'] = page;
+        this.renderDebts();
     }
 
     calculateDebtProgress(debt) {
@@ -1465,6 +2122,309 @@ class FinanceTracker {
         }
     }
 
+    // Subscriptions
+    renderSubscriptions() {
+        const page = this.currentPageNumber['subscriptions'] || 1;
+        const paginated = this.paginateArray(this.data.subscriptions, page, this.itemsPerPage);
+        
+        const tbody = document.getElementById('subscriptionsTableBody');
+        if (!tbody) return;
+        
+        if (paginated.data.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center">No subscriptions yet</td></tr>';
+            this.renderPagination('subscriptionsPagination', 1, 0, 'financeTracker.goToSubscriptionsPage');
+            return;
+        }
+        
+        tbody.innerHTML = paginated.data.map(sub => {
+            const category = this.data.categories.expense.find(c => c.id === sub.category);
+            return `
+                <tr>
+                    <td><strong>${sub.name}</strong></td>
+                    <td>${category ? category.name : sub.category}</td>
+                    <td>${this.formatCurrency(sub.amount)}</td>
+                    <td>${sub.frequency}</td>
+                    <td>${this.formatDateString(sub.startDate)}</td>
+                    <td>
+                        <button class="btn-edit" onclick="financeTracker.editSubscription('${sub.id}')">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button class="btn-danger" onclick="financeTracker.deleteSubscription('${sub.id}')">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+        
+        this.renderPagination('subscriptionsPagination', page, paginated.totalPages, 'financeTracker.goToSubscriptionsPage');
+    }
+
+    goToSubscriptionsPage(page) {
+        this.currentPageNumber['subscriptions'] = page;
+        this.renderSubscriptions();
+    }
+
+    openSubscriptionModal(subscription = null) {
+        this.editingId = subscription ? subscription.id : null;
+        
+        document.getElementById('subscriptionModalTitle').textContent = 
+            subscription ? 'Edit Subscription' : 'Add Subscription';
+        
+        this.populateCategoryOptions();
+        
+        if (subscription) {
+            document.getElementById('subscriptionName').value = subscription.name;
+            document.getElementById('subscriptionCategory').value = subscription.category;
+            document.getElementById('subscriptionAmount').value = subscription.amount;
+            document.getElementById('subscriptionFrequency').value = subscription.frequency;
+            document.getElementById('subscriptionStartDate').value = subscription.startDate;
+        } else {
+            document.getElementById('subscriptionForm').reset();
+            document.getElementById('subscriptionStartDate').value = new Date().toISOString().split('T')[0];
+        }
+        
+        document.getElementById('subscriptionModal').style.display = 'block';
+    }
+
+    saveSubscription() {
+        const formData = {
+            id: this.editingId || this.generateId(),
+            name: document.getElementById('subscriptionName').value,
+            category: document.getElementById('subscriptionCategory').value,
+            amount: parseFloat(document.getElementById('subscriptionAmount').value),
+            frequency: document.getElementById('subscriptionFrequency').value,
+            startDate: document.getElementById('subscriptionStartDate').value
+        };
+        
+        if (this.editingId) {
+            const index = this.data.subscriptions.findIndex(s => s.id === this.editingId);
+            this.data.subscriptions[index] = formData;
+        } else {
+            this.data.subscriptions.push(formData);
+        }
+        
+        this.saveData();
+        this.closeModal(document.getElementById('subscriptionModal'));
+        this.renderSubscriptions();
+        this.renderDashboard();
+    }
+
+    editSubscription(id) {
+        const subscription = this.data.subscriptions.find(s => s.id === id);
+        if (subscription) {
+            this.openSubscriptionModal(subscription);
+        }
+    }
+
+    deleteSubscription(id) {
+        if (confirm('Are you sure you want to delete this subscription?')) {
+            this.data.subscriptions = this.data.subscriptions.filter(s => s.id !== id);
+            this.saveData();
+            this.renderSubscriptions();
+            this.renderDashboard();
+        }
+    }
+
+    // Reminders
+    renderReminders() {
+        // Update threshold input value
+        const thresholdInput = document.getElementById('reminderDaysThreshold');
+        if (thresholdInput) {
+            thresholdInput.value = this.reminderDaysThreshold;
+        }
+        
+        const page = this.currentPageNumber['reminders'] || 1;
+        const paginated = this.paginateArray(this.data.reminders, page, this.itemsPerPage);
+        
+        const tbody = document.getElementById('remindersTableBody');
+        if (!tbody) return;
+        
+        if (paginated.data.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center">No reminders yet</td></tr>';
+            this.renderPagination('remindersPagination', 1, 0, 'financeTracker.goToRemindersPage');
+            return;
+        }
+        
+        const now = new Date();
+        tbody.innerHTML = paginated.data.map(reminder => {
+            const reminderDate = new Date(reminder.date);
+            const daysUntil = Math.ceil((reminderDate - now) / (1000 * 60 * 60 * 24));
+            const isPast = reminderDate < now;
+            const status = reminder.status || 'pending';
+            
+            return `
+                <tr class="${isPast && status === 'pending' ? 'past-reminder' : ''}">
+                    <td><strong>${reminder.title}</strong></td>
+                    <td>${reminder.description || '-'}</td>
+                    <td>${this.formatDateString(reminder.date)}</td>
+                    <td>
+                        <span class="badge ${status}">${status.charAt(0).toUpperCase() + status.slice(1)}</span>
+                    </td>
+                    <td class="${isPast && status === 'pending' ? 'text-danger' : daysUntil <= this.reminderDaysThreshold && status === 'pending' ? 'text-warning' : ''}">
+                        ${status === 'complete' ? (reminder.completedDate ? `Completed ${this.formatDateString(reminder.completedDate)}` : 'Completed') : (isPast ? 'Past' : daysUntil === 0 ? 'Today' : daysUntil === 1 ? 'Tomorrow' : `${daysUntil} days`)}
+                    </td>
+                    <td>
+                        ${status === 'pending' ? `
+                            <button class="btn-success" onclick="financeTracker.markReminderComplete('${reminder.id}')" title="Mark as Complete">
+                                <i class="fas fa-check"></i>
+                            </button>
+                        ` : ''}
+                        <button class="btn-edit" onclick="financeTracker.editReminder('${reminder.id}')">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button class="btn-danger" onclick="financeTracker.deleteReminder('${reminder.id}')">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+        
+        this.renderPagination('remindersPagination', page, paginated.totalPages, 'financeTracker.goToRemindersPage');
+    }
+
+    goToRemindersPage(page) {
+        this.currentPageNumber['reminders'] = page;
+        this.renderReminders();
+    }
+
+    openReminderModal(reminder = null) {
+        this.editingId = reminder ? reminder.id : null;
+        
+        document.getElementById('reminderModalTitle').textContent = 
+            reminder ? 'Edit Reminder' : 'Add Reminder';
+        
+        if (reminder) {
+            document.getElementById('reminderTitle').value = reminder.title;
+            document.getElementById('reminderDescription').value = reminder.description || '';
+            document.getElementById('reminderDate').value = reminder.date;
+            document.getElementById('reminderRecurring').checked = reminder.recurring || false;
+        } else {
+            document.getElementById('reminderForm').reset();
+            document.getElementById('reminderDate').value = new Date().toISOString().split('T')[0];
+            document.getElementById('reminderRecurring').checked = false;
+        }
+        
+        document.getElementById('reminderModal').style.display = 'block';
+    }
+
+    saveReminder() {
+        const formData = {
+            id: this.editingId || this.generateId(),
+            title: document.getElementById('reminderTitle').value,
+            description: document.getElementById('reminderDescription').value || '',
+            date: document.getElementById('reminderDate').value,
+            status: this.editingId ? (this.data.reminders.find(r => r.id === this.editingId)?.status || 'pending') : 'pending',
+            recurring: document.getElementById('reminderRecurring').checked,
+            completedDate: this.editingId ? (this.data.reminders.find(r => r.id === this.editingId)?.completedDate || null) : null
+        };
+        
+        if (this.editingId) {
+            const index = this.data.reminders.findIndex(r => r.id === this.editingId);
+            this.data.reminders[index] = formData;
+        } else {
+            this.data.reminders.push(formData);
+        }
+        
+        this.saveData();
+        this.closeModal(document.getElementById('reminderModal'));
+        this.renderReminders();
+        this.renderDashboard();
+    }
+
+    editReminder(id) {
+        const reminder = this.data.reminders.find(r => r.id === id);
+        if (reminder) {
+            this.openReminderModal(reminder);
+        }
+    }
+
+    deleteReminder(id) {
+        if (confirm('Are you sure you want to delete this reminder?')) {
+            this.data.reminders = this.data.reminders.filter(r => r.id !== id);
+            this.saveData();
+            this.renderReminders();
+            this.renderDashboard();
+        }
+    }
+
+    markReminderComplete(id) {
+        const reminder = this.data.reminders.find(r => r.id === id);
+        if (!reminder) return;
+        
+        const completedDate = new Date().toISOString().split('T')[0];
+        reminder.status = 'complete';
+        reminder.completedDate = completedDate;
+        
+        // If recurring, create a new reminder for next month
+        if (reminder.recurring) {
+            const reminderDate = new Date(reminder.date);
+            const nextDate = new Date(reminderDate);
+            nextDate.setMonth(nextDate.getMonth() + 1);
+            
+            const newReminder = {
+                id: this.generateId(),
+                title: reminder.title,
+                description: reminder.description || '',
+                date: nextDate.toISOString().split('T')[0],
+                status: 'pending',
+                recurring: true,
+                completedDate: null
+            };
+            
+            this.data.reminders.push(newReminder);
+        }
+        
+        this.saveData();
+        this.renderReminders();
+        this.renderDashboard();
+        this.showNotification('Reminder marked as complete!', 'success');
+    }
+
+    updateReminderThreshold() {
+        const threshold = parseInt(document.getElementById('reminderDaysThreshold').value);
+        if (threshold >= 1 && threshold <= 30) {
+            this.reminderDaysThreshold = threshold;
+            localStorage.setItem('reminderDaysThreshold', threshold.toString());
+            this.renderReminders();
+            this.renderDashboard();
+            this.showNotification('Reminder threshold updated!', 'success');
+        }
+    }
+
+    async saveApiKey() {
+        const apiKeyInput = document.getElementById('googleScriptKey');
+        if (!apiKeyInput) return;
+        
+        const apiKey = apiKeyInput.value.trim();
+        if (!apiKey) {
+            this.showNotification('Please enter a valid API key', 'error');
+            return;
+        }
+        
+        // Test the API key by trying to read
+        try {
+            const response = await fetch(`https://script.google.com/macros/s/${apiKey}/exec?action=read`);
+            console.log(`https://script.google.com/macros/s/${apiKey}/exec?action=read`);
+            const result = await response.text();
+            
+            // If we get a response (even if empty), the key is valid
+            this.googleScriptKey = apiKey;
+            localStorage.setItem('googleScriptKey', apiKey);
+            
+            // Migrate existing data to Google Apps Script
+            await this.saveData();
+            
+            this.showNotification('API key saved successfully! Data will now be stored in Google Apps Script.', 'success');
+        } catch (e) {
+            // Still save the key, but warn the user
+            this.googleScriptKey = apiKey;
+            localStorage.setItem('googleScriptKey', apiKey);
+            this.showNotification('API key saved, but could not verify connection. Please check your Google Apps Script deployment.', 'warning');
+        }
+    }
+
     // Utility Methods
     populateCategoryOptions() {
         const incomeOptions = this.data.categories.income.map(cat => 
@@ -1475,8 +2435,18 @@ class FinanceTracker {
             `<option value="${cat.id}">${cat.name}</option>`
         ).join('');
         
-        document.getElementById('transactionCategory').innerHTML = 
-            '<option value="">Select Category</option>' + incomeOptions + expenseOptions;
+        const categorySelect = document.getElementById('transactionCategory');
+        if (categorySelect) {
+            categorySelect.innerHTML = 
+                '<option value="">Select Category</option>' + incomeOptions + expenseOptions;
+        }
+        
+        // Also populate subscription category if it exists
+        const subscriptionCategory = document.getElementById('subscriptionCategory');
+        if (subscriptionCategory) {
+            subscriptionCategory.innerHTML = 
+                '<option value="">Select Category</option>' + expenseOptions;
+        }
     }
 
     populateCategoryFilter() {
@@ -1629,18 +2599,19 @@ class FinanceTracker {
             version: '1.0.0'
         };
         
-        const dataStr = JSON.stringify(dataToExport, null, 2);
-        const dataBlob = new Blob([dataStr], { type: 'application/json' });
+        // Encrypt the data before exporting
+        const encryptedData = this.encryptionService.encrypt(dataToExport);
+        const dataBlob = new Blob([encryptedData], { type: 'text/plain' });
         
         const link = document.createElement('a');
         link.href = URL.createObjectURL(dataBlob);
-        link.download = `finance-tracker-backup-${new Date().toISOString().split('T')[0]}.json`;
+        link.download = `finance-tracker-backup-${new Date().toISOString().split('T')[0]}.txt`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
         
         // Show success message
-        this.showNotification('Data exported successfully!', 'success');
+        this.showNotification('Data exported successfully (encrypted)!', 'success');
     }
 
     importData(file) {
@@ -1649,7 +2620,14 @@ class FinanceTracker {
         const reader = new FileReader();
         reader.onload = (e) => {
             try {
-                const importedData = JSON.parse(e.target.result);
+                let importedData;
+                // Try to decrypt first (encrypted export)
+                importedData = this.encryptionService.decrypt(e.target.result);
+                
+                // If decryption fails, try parsing as JSON (legacy format)
+                if (!importedData) {
+                    importedData = JSON.parse(e.target.result);
+                }
                 
                 // Validate the imported data structure
                 if (this.validateImportedData(importedData)) {
@@ -1667,12 +2645,14 @@ class FinanceTracker {
                         this.renderInvestments();
                         this.renderCards();
                         this.renderCategories();
+                        if (this.data.subscriptions) this.renderSubscriptions();
+                        if (this.data.reminders) this.renderReminders();
                     }
                 } else {
                     this.showNotification('Invalid data format. Please select a valid backup file.', 'error');
                 }
             } catch (error) {
-                this.showNotification('Error reading file. Please make sure it\'s a valid JSON file.', 'error');
+                this.showNotification('Error reading file. Please make sure it\'s a valid backup file.', 'error');
             }
         };
         reader.readAsText(file);
